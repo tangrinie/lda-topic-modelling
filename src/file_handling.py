@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 from pathlib import Path
+import re
 from typing import Iterable, Literal
 
 import pandas as pd
 
 
 CsvMode = Literal["file", "rows"]
+WORD_PATTERN = re.compile(r"\S+")
 
 
 @dataclass(frozen=True)
@@ -140,3 +142,39 @@ def read_pdf_text(file_bytes: bytes) -> str:
         raise ValueError("No selectable text was found in the PDF.")
 
     return text
+
+
+def split_documents_into_chunks(
+    documents: list[Document],
+    enabled: bool = True,
+    target_words: int = 300,
+    min_words_for_chunking: int = 450,
+) -> list[Document]:
+    if not enabled:
+        return documents
+
+    chunked_documents: list[Document] = []
+
+    for document in documents:
+        words = WORD_PATTERN.findall(document.text)
+        if len(words) < min_words_for_chunking:
+            chunked_documents.append(document)
+            continue
+
+        chunks = split_words(words, target_words)
+        for chunk_index, chunk_words in enumerate(chunks, start=1):
+            chunked_documents.append(
+                Document(
+                    name=f"{document.name} chunk {chunk_index}",
+                    text=" ".join(chunk_words),
+                    source_type=f"{document.source_type} chunk",
+                    size_bytes=document.size_bytes if chunk_index == 1 else 0,
+                )
+            )
+
+    return chunked_documents
+
+
+def split_words(words: list[str], target_words: int) -> list[list[str]]:
+    target_words = max(target_words, 50)
+    return [words[start : start + target_words] for start in range(0, len(words), target_words)]

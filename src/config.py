@@ -6,13 +6,22 @@ from dataclasses import dataclass, field
 # Add future file readers here after implementing them in src/file_handling.py.
 DEFAULT_SUPPORTED_FILE_TYPES = ["txt", "csv", "pdf"]
 
+STOPWORD_LANGUAGE_OPTIONS = {
+    "english_italian": "English + Italian",
+    "english": "English",
+    "italian": "Italian",
+    "none": "None",
+}
+
 
 @dataclass(frozen=True)
 class PreprocessingConfig:
     lowercase: bool = True
+    normalize_accents: bool = True
     remove_punctuation: bool = True
     remove_numbers: bool = False
     remove_stopwords: bool = True
+    stopword_language: str = "english_italian"
     use_stemming: bool = False
     min_token_length: int = 3
     custom_stopwords: frozenset[str] = field(default_factory=frozenset)

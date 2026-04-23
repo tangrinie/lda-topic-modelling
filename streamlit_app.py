@@ -5,9 +5,14 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.config import DEFAULT_SUPPORTED_FILE_TYPES, ModelConfig, PreprocessingConfig
+from src.config import (
+    DEFAULT_SUPPORTED_FILE_TYPES,
+    STOPWORD_LANGUAGE_OPTIONS,
+    ModelConfig,
+    PreprocessingConfig,
+)
 from src.export import dataframe_to_csv_bytes, results_to_json_bytes
-from src.file_handling import Document, read_uploaded_files
+from src.file_handling import Document, read_uploaded_files, split_documents_into_chunks
 from src.modeling import TopicModelError, fit_lda_model
 from src.preprocessing import build_preprocessing_summary, parse_custom_stopwords, preprocess_documents
 from src.utils import format_file_size
@@ -61,8 +66,16 @@ def main() -> None:
     if use_sample_documents:
         documents.extend(load_sample_documents())
 
+    original_document_count = len(documents)
+    documents = split_documents_into_chunks(
+        documents,
+        enabled=sidebar_settings["split_long_documents"],
+        target_words=sidebar_settings["chunk_size_words"],
+        min_words_for_chunking=sidebar_settings["min_words_for_chunking"],
+    )
+
     render_file_errors(read_errors)
-    render_document_overview(documents)
+    render_document_overview(documents, original_document_count)
 
     run_disabled = not documents
     run_clicked = st.button(
@@ -93,6 +106,13 @@ def main() -> None:
             "turning off stopword removal, or uploading longer documents."
         )
         return
+
+    if preprocessing_summary["processed_documents"] < model_config.num_topics:
+        st.warning(
+            f"You selected {model_config.num_topics} topics, but only "
+            f"{preprocessing_summary['processed_documents']} analysis units contain usable text. "
+            "For more distinct topics, upload more documents or keep chunking enabled with a smaller chunk size."
+        )
 
     with st.spinner("Fitting the LDA topic model..."):
         try:
@@ -134,12 +154,48 @@ def render_sidebar() -> dict:
             value=10,
             step=1,
         )
+        split_long_documents = st.checkbox(
+            "Split long documents into chunks",
+            value=True,
+            help="Recommended for long PDFs. LDA needs multiple analysis units to create several distinct topics.",
+        )
+        chunk_size_words = st.slider(
+            "Chunk size in words",
+            min_value=100,
+            max_value=1000,
+            value=300,
+            step=50,
+            disabled=not split_long_documents,
+        )
+        min_words_for_chunking = st.slider(
+            "Minimum words before chunking",
+            min_value=100,
+            max_value=2000,
+            value=450,
+            step=50,
+            disabled=not split_long_documents,
+        )
 
         st.subheader("Preprocessing")
         lowercase = st.checkbox("Lowercase text", value=True)
+        normalize_accents = st.checkbox(
+            "Normalize accents",
+            value=True,
+            help="Recommended for Italian PDFs so accented and unaccented word variants are treated consistently.",
+        )
         remove_punctuation = st.checkbox("Remove punctuation", value=True)
         remove_numbers = st.checkbox("Remove numbers", value=False)
         remove_stopwords = st.checkbox("Remove stopwords", value=True)
+        stopword_language_label = st.selectbox(
+            "Stopword language",
+            options=list(STOPWORD_LANGUAGE_OPTIONS.values()),
+            index=0,
+            disabled=not remove_stopwords,
+            help="Use English + Italian for mixed corpora or Italian PDFs with words like che, di, il, la, per.",
+        )
+        stopword_language = next(
+            key for key, label in STOPWORD_LANGUAGE_OPTIONS.items() if label == stopword_language_label
+        )
         use_stemming = st.checkbox(
             "Apply Porter stemming",
             value=False,
@@ -154,9 +210,11 @@ def render_sidebar() -> dict:
 
         preprocessing_config = PreprocessingConfig(
             lowercase=lowercase,
+            normalize_accents=normalize_accents,
             remove_punctuation=remove_punctuation,
             remove_numbers=remove_numbers,
             remove_stopwords=remove_stopwords,
+            stopword_language=stopword_language,
             use_stemming=use_stemming,
             min_token_length=min_token_length,
             custom_stopwords=frozenset(parse_custom_stopwords(custom_stopwords_text)),
@@ -211,6 +269,9 @@ def render_sidebar() -> dict:
         "supported_file_types": supported_file_types,
         "csv_mode": csv_mode,
         "max_file_size_mb": max_file_size_mb,
+        "split_long_documents": split_long_documents,
+        "chunk_size_words": chunk_size_words,
+        "min_words_for_chunking": min_words_for_chunking,
         "preprocessing_config": preprocessing_config,
         "model_config": model_config,
     }
@@ -225,7 +286,7 @@ def render_file_errors(read_errors: list[str]) -> None:
             st.error(error)
 
 
-def render_document_overview(documents: list[Document]) -> None:
+def render_document_overview(documents: list[Document], original_document_count: int) -> None:
     if not documents:
         return
 
@@ -233,9 +294,15 @@ def render_document_overview(documents: list[Document]) -> None:
     total_size = sum(document.size_bytes for document in documents)
 
     metric_cols = st.columns(3)
-    metric_cols[0].metric("Documents ready", f"{len(documents):,}")
+    metric_cols[0].metric("Analysis units ready", f"{len(documents):,}")
     metric_cols[1].metric("Total characters", f"{total_chars:,}")
     metric_cols[2].metric("Approx. upload size", format_file_size(total_size))
+
+    if len(documents) != original_document_count:
+        st.info(
+            f"{original_document_count:,} uploaded document(s) were split into "
+            f"{len(documents):,} analysis units for topic modeling."
+        )
 
     overview_df = pd.DataFrame(
         {
@@ -257,9 +324,14 @@ def render_document_overview(documents: list[Document]) -> None:
 
 def render_results(result, preprocessed_df: pd.DataFrame, preprocessing_summary: dict) -> None:
     st.success("Topic model completed.")
+    if preprocessing_summary["processed_documents"] < result.topic_count * 2:
+        st.info(
+            "Topic quality improves when the corpus has many more analysis units than requested topics. "
+            "If several topics look similar, try a smaller chunk size, more documents, or fewer topics."
+        )
 
     metric_cols = st.columns(4)
-    metric_cols[0].metric("Processed documents", f"{preprocessing_summary['processed_documents']:,}")
+    metric_cols[0].metric("Processed units", f"{preprocessing_summary['processed_documents']:,}")
     metric_cols[1].metric("Total tokens", f"{preprocessing_summary['total_tokens']:,}")
     metric_cols[2].metric("Vocabulary size", f"{result.vocabulary_size:,}")
     metric_cols[3].metric("Topics", f"{result.topic_count:,}")

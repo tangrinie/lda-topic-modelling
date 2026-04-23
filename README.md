@@ -8,12 +8,14 @@ The base version is designed to work reliably with `.txt` and `.csv` files. PDF 
 
 - Upload one or more `.txt`, `.csv`, or `.pdf` documents
 - Read CSV files as one document per file or one document per row
+- Split long documents into chunks so single PDFs can produce richer topic models
 - Safe file handling with clear per-file error messages
 - Configurable preprocessing:
   - lowercasing
+  - accent normalization
   - punctuation removal
   - number removal
-  - stopword removal
+  - English and Italian stopword removal
   - custom stopwords
   - optional Porter stemming
   - minimum token length

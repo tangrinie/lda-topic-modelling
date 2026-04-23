@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import re
 import string
+import unicodedata
 
 import pandas as pd
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 from src.config import PreprocessingConfig
 from src.file_handling import Document
+from src.stopwords import get_stopwords
 
 
 TOKEN_PATTERN = re.compile(r"[a-zA-Z][a-zA-Z']*")
@@ -19,7 +20,7 @@ def parse_custom_stopwords(raw_text: str) -> set[str]:
         return set()
 
     normalized = raw_text.replace(",", "\n")
-    return {word.strip().lower() for word in normalized.splitlines() if word.strip()}
+    return {normalize_text(word.strip().lower()) for word in normalized.splitlines() if word.strip()}
 
 
 def preprocess_documents(documents: list[Document], config: PreprocessingConfig) -> pd.DataFrame:
@@ -45,6 +46,9 @@ def preprocess_text(text: str, config: PreprocessingConfig) -> list[str]:
     if config.lowercase:
         text = text.lower()
 
+    if config.normalize_accents:
+        text = normalize_text(text)
+
     if config.remove_punctuation:
         text = text.translate(PUNCTUATION_TRANSLATION)
 
@@ -52,7 +56,7 @@ def preprocess_text(text: str, config: PreprocessingConfig) -> list[str]:
         text = re.sub(r"\d+", " ", text)
 
     tokens = TOKEN_PATTERN.findall(text)
-    stopwords = set(ENGLISH_STOP_WORDS).union(config.custom_stopwords)
+    stopwords = get_stopwords(config.stopword_language).union(config.custom_stopwords)
     # Future extension: replace stemming with lemmatization if you add spaCy or WordNet.
     stemmer = get_stemmer() if config.use_stemming else None
 
@@ -68,6 +72,14 @@ def preprocess_text(text: str, config: PreprocessingConfig) -> list[str]:
         cleaned_tokens.append(token)
 
     return cleaned_tokens
+
+
+def normalize_text(text: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
 
 
 def get_stemmer():
