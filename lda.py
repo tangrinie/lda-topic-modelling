@@ -16,7 +16,7 @@ This is a **simple Streamlit page**.
 
 You can write:
 - **bold**
-- *italic*
+- *italic mi böböböbö*
 - `code`
 
 [Streamlit website](https://streamlit.io)
