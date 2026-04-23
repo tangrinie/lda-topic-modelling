@@ -1,0 +1,3 @@
+Hospitals are using artificial intelligence to prioritize patient records, detect unusual lab results, and support clinical decision making. The best deployments keep clinicians in control while improving triage, documentation, and care coordination.
+
+Healthcare teams also need strong governance around privacy, bias, and model monitoring. Patient data should be protected, audit trails should be maintained, and recommendations should be reviewed before they influence treatment decisions.

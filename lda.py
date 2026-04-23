@@ -1,26 +1,11 @@
-import streamlit as st
+"""Compatibility entry point for older commands.
 
-st.set_page_config(page_title="My Simple Page", page_icon="📄")
+Preferred command:
+    streamlit run streamlit_app.py
+"""
 
-st.title("My Streamlit Page")
+from streamlit_app import main
 
-st.markdown("""
-# Hello
 
-This is a **simple Streamlit page**.
-
-## What it shows
-- A title
-- Markdown text
-- A button
-
-You can write:
-- **bold**
-- *italic mi böböböbö*
-- `code`
-
-[Streamlit website](https://streamlit.io)
-""")
-
-if st.button("Click me"):
-    st.success("Button clicked!")
+if __name__ == "__main__":
+    main()
